@@ -24,47 +24,81 @@ from IPython.display import Image, display, HTML
 from PIL import Image
 import base64 
 from dotenv import load_dotenv, find_dotenv
-import requests
-import json
-import gradio as gr
-
-# Load environment variables
-_ = load_dotenv(find_dotenv())  # Read local .env file
+_ = load_dotenv(find_dotenv()) # read local .env file
 hf_api_key = os.environ['HF_API_KEY']
-API_URL = os.environ['HF_API_SUMMARY_BASE']  # Ensure the API URL is correct
 
-# Helper function to send API requests
-def get_completion(inputs, parameters=None, ENDPOINT_URL=API_URL): 
+# Helper function
+import requests, json
+
+#Summarization endpoint
+def get_completion(inputs, parameters=None,ENDPOINT_URL=os.environ['HF_API_SUMMARY_BASE']): 
     headers = {
-        "Authorization": f"Bearer {hf_api_key}",
-        "Content-Type": "application/json"
+      "Authorization": f"Bearer {hf_api_key}",
+      "Content-Type": "application/json"
     }
-    data = {"inputs": inputs}
+    data = { "inputs": inputs }
     if parameters is not None:
         data.update({"parameters": parameters})
-    response = requests.post(ENDPOINT_URL, headers=headers, data=json.dumps(data))
+    response = requests.request("POST",
+                                ENDPOINT_URL, headers=headers,
+                                data=json.dumps(data)
+                               )
     return json.loads(response.content.decode("utf-8"))
 
-# Function to merge subword tokens (e.g., "San" and "Francisco" into "San Francisco")
+import gradio as gr
+def summarize(input):
+    output = get_completion(input)
+    return output[0]['summary_text']
+    
+gr.close_all()
+demo = gr.Interface(fn=summarize, inputs="text", outputs="text")
+demo.launch(share=True, server_port=int(os.environ['PORT1']))
+
+def ner(input):
+    output = get_completion(input, parameters=None, ENDPOINT_URL=API_URL)
+    return {"text": input, "entities": output}
+
+gr.close_all()
+demo = gr.Interface(fn=ner,
+                    inputs=[gr.Textbox(label="Text to find entities", lines=2)],
+                    outputs=[gr.HighlightedText(label="Text with entities")],
+                    title="NER with dslim/bert-base-NER",
+                    description="Find entities using the `dslim/bert-base-NER` model under the hood!",
+                    allow_flagging="never",
+                    #Here we introduce a new tag, examples, easy to use examples for your application
+                    examples=["My name is Arunkumar and i work at blockchain company in chennai", "My name is Poli and work at HuggingFace"])
+demo.launch(share=True, server_port=int(os.environ['PORT3']))
+
 def merge_tokens(tokens):
     merged_tokens = []
     for token in tokens:
         if merged_tokens and token['entity'].startswith('I-') and merged_tokens[-1]['entity'].endswith(token['entity'][2:]):
-            # Merge the token if it's part of the same entity
+            # If current token continues the entity of the last one, merge them
             last_token = merged_tokens[-1]
             last_token['word'] += token['word'].replace('##', '')
             last_token['end'] = token['end']
             last_token['score'] = (last_token['score'] + token['score']) / 2
         else:
-            # Add new token to the list
+            # Otherwise, add the token to the list
             merged_tokens.append(token)
+
     return merged_tokens
 
-# NER function to process input and call the API
 def ner(input):
     output = get_completion(input, parameters=None, ENDPOINT_URL=API_URL)
     merged_tokens = merge_tokens(output)
     return {"text": input, "entities": merged_tokens}
+
+gr.close_all()
+demo = gr.Interface(fn=ner,
+                    inputs=[gr.Textbox(label="Text to find entities", lines=2)],
+                    outputs=[gr.HighlightedText(label="Text with entities")],
+                    title="NER with dslim/bert-base-NER",
+                    description="Find entities using the `dslim/bert-base-NER` model under the hood!",
+                    allow_flagging="never",
+                    examples=["My name is Andrew, I'm building DeeplearningAI and I live in California", "My name is Poli, I live in Vienna and work at HuggingFace"])
+
+demo.launch(share=True, server_port=int(os.environ['PORT4']))
 
 # Initialize Gradio interface
 gr.close_all()
@@ -86,7 +120,8 @@ demo.launch()
 
 ```
 ### OUTPUT:
-![image-1](https://github.com/user-attachments/assets/7935ace7-2893-438f-b599-34a7be556146)
+![Screenshot 2025-05-17 105626](https://github.com/user-attachments/assets/ddbc9b11-d88d-4a8e-abc8-b49c402ffc71)
+
 
 ### RESULT:
 Thus, the developed an NER prototype application with user interaction and evaluation features, using a fine-tuned BART model deployed through the Gradio framework.
